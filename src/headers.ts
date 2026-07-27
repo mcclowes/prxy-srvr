@@ -11,8 +11,28 @@ const HOP_BY_HOP = [
   'upgrade',
 ];
 
+/**
+ * Headers naming the caller. Vercel signs `forwarded` and `x-forwarded-for`
+ * onto every inbound request, so passing them on hands the upstream the exact
+ * address the proxy exists to stand in front of - and lets it rate limit or
+ * block on that address rather than ours, which makes a pool of proxies share
+ * one budget instead of having one each.
+ */
+const CALLER_IDENTIFYING = [
+  'forwarded',
+  'x-forwarded-for',
+  'x-forwarded-proto',
+  'x-forwarded-host',
+  'x-forwarded-port',
+  'x-real-ip',
+  'x-client-ip',
+  'true-client-ip',
+  'cf-connecting-ip',
+];
+
 const STRIP_FROM_REQUEST = new Set([
   ...HOP_BY_HOP,
+  ...CALLER_IDENTIFYING,
   'host',
   'cookie',
   'cookie2',
@@ -36,8 +56,8 @@ export function buildUpstreamHeaders(request: Request, target: URL): Headers {
 
   for (const [name, value] of request.headers) {
     const key = name.toLowerCase();
-    // x-vercel-* and x-forwarded-host describe our infrastructure, not the client's intent.
-    if (STRIP_FROM_REQUEST.has(key) || key.startsWith('x-vercel-') || key === 'x-forwarded-host') {
+    // x-vercel-* describes our infrastructure, not the client's intent.
+    if (STRIP_FROM_REQUEST.has(key) || key.startsWith('x-vercel-')) {
       continue;
     }
     headers.set(name, value);
