@@ -83,7 +83,11 @@ Generate a key with `openssl rand -hex 32`. Use a different one per deployment s
 
 ## Deploying three of them
 
-Each deployment is its own Vercel project pointing at this same repo. Pushing to `master` redeploys all three.
+Each deployment is its own Vercel project pointing at this same repo. Pushing to `main` redeploys all three.
+
+Every project needs its **Production Branch** (Settings → Git) set to `main`. If it's set to anything else, merges still build — they just come out as previews, with `"target": null`, and the live URL quietly keeps serving the older build. That's worth knowing because nothing about it looks like a failure: the merge is green, the deployment says `READY`, and the endpoint you just added 404s or falls through to a catch-all route.
+
+Changing the setting doesn't retroactively promote a build that already exists, either. Push a new commit, or redeploy the latest one from the dashboard.
 
 ```sh
 vercel link --project prxy-srvr-a --yes
