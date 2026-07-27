@@ -8,6 +8,44 @@ const configWith = (env: Record<string, string> = {}): ProxyConfig =>
 const target = new URL('https://api.example.com/foo');
 
 describe('buildUpstreamHeaders', () => {
+  // The whole point of a proxy is that the upstream sees us, not the caller.
+  // Vercel signs `forwarded` and `x-forwarded-for` onto every inbound request,
+  // so passing them through hands the origin the address we are standing in
+  // front of - and lets it rate limit or block on that address instead of ours.
+  it('strips the forwarded headers that would reveal the caller', () => {
+    const request = new Request('https://proxy.test/', {
+      headers: {
+        forwarded: 'for=203.0.113.7;host=proxy.test;proto=https',
+        'x-forwarded-for': '203.0.113.7',
+        'x-forwarded-proto': 'https',
+        'x-real-ip': '203.0.113.7',
+      },
+    });
+
+    const headers = buildUpstreamHeaders(request, target);
+
+    for (const name of ['forwarded', 'x-forwarded-for', 'x-forwarded-proto', 'x-real-ip']) {
+      expect(headers.get(name), `${name} should not reach the upstream`).toBeNull();
+    }
+  });
+
+  it('leaves no header mentioning the caller address', () => {
+    const request = new Request('https://proxy.test/', {
+      headers: {
+        forwarded: 'for=203.0.113.7',
+        'x-forwarded-for': '203.0.113.7, 70.41.3.18',
+        'user-agent': 'some-client/1.0',
+      },
+    });
+
+    const serialised = [...buildUpstreamHeaders(request, target)]
+      .map(([name, value]) => `${name}: ${value}`)
+      .join('\n');
+
+    expect(serialised).not.toContain('203.0.113.7');
+    expect(serialised).toContain('some-client/1.0');
+  });
+
   it('forwards authorization so callers can reach authenticated upstreams', () => {
     const request = new Request('https://proxy.test/', {
       headers: { authorization: 'Bearer upstream-token', 'content-type': 'application/json' },
