@@ -6,11 +6,17 @@ It's a single function with no dependencies beyond the Node runtime. Requests co
 
 ## Request format
 
-Two forms. The query form is recommended, because Vercel's router collapses `//` in a path and the query string survives untouched.
+Two forms. Use the query form: it's unambiguous and costs one request.
 
 ```
 GET https://your-proxy.vercel.app/?url=https%3A%2F%2Fapi.example.com%2Fthings%3Fpage%3D2
-GET https://your-proxy.vercel.app/https://api.example.com/things?page=2
+```
+
+The cors-anywhere style path also works, but Vercel's router collapses `//` and 308s you to the single-slash version first, so it costs an extra round trip. Both of these land on the same place:
+
+```
+GET https://your-proxy.vercel.app/https://api.example.com/things   # 308, then 200
+GET https://your-proxy.vercel.app/https:/api.example.com/things    # 200 directly
 ```
 
 Every request needs an `x-proxy-key` header matching that deployment's `PROXY_KEY`. Without it you get a 401. Preflight `OPTIONS` requests skip the check, since browsers won't send custom headers on a preflight.
@@ -47,6 +53,14 @@ Repeat with `prxy-srvr-b` and `prxy-srvr-c`. To connect them to GitHub so pushes
 ```sh
 ./scripts/deploy-all.sh prxy-srvr-a prxy-srvr-b prxy-srvr-c
 ```
+
+Note that `vercel link` rewrites `.vercel/project.json`, so whichever project you linked last is the one a bare `vercel deploy` will target.
+
+### A caveat on rate limits
+
+Three deployments only spread load if the upstream counts against something that differs between them. If it rate limits per API key or per account, use a different credential per deployment and you're set.
+
+If it rate limits by source IP, three projects in the same Vercel region can share egress IPs, and you'll gain nothing. Set a different function region per project under settings, functions in the Vercel dashboard. Don't pin `regions` in `vercel.json`, since all three read the same file.
 
 ## Health checks
 
