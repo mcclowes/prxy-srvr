@@ -1,16 +1,10 @@
-import { timingSafeEqual } from 'node:crypto';
+import { isAuthorized } from './auth.js';
 import type { ProxyConfig } from './config.js';
 import { buildResponseHeaders, buildUpstreamHeaders, corsHeaders } from './headers.js';
 import { extractTarget, resolveTarget } from './target.js';
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const METHODS_WITHOUT_BODY = new Set(['GET', 'HEAD']);
-
-function keysMatch(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 function errorResponse(
   status: number,
@@ -57,8 +51,7 @@ export async function handleProxy(
     return new Response(null, { status: 204, headers: corsHeaders(request, config) });
   }
 
-  const providedKey = request.headers.get('x-proxy-key');
-  if (!providedKey || !keysMatch(providedKey, config.proxyKey)) {
+  if (!isAuthorized(request, config.proxyKey)) {
     return errorResponse(401, 'Missing or invalid x-proxy-key header.', request, config);
   }
 

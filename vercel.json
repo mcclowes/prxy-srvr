@@ -8,6 +8,7 @@
   },
   "rewrites": [
     { "source": "/health", "destination": "/api/health" },
+    { "source": "/batch", "destination": "/api/batch" },
     { "source": "/(.*)", "destination": "/api/proxy" }
   ]
 }
