@@ -23,6 +23,52 @@ Every request needs an `x-proxy-key` header matching that deployment's `PROXY_KE
 
 The method, body, and headers pass straight through, so `authorization` reaches the upstream and you can proxy authenticated APIs. Cookies are stripped in both directions.
 
+## Batching
+
+`POST /batch` fetches many targets in one invocation. Worth reaching for when the round trip to this proxy costs more than the upstream request does, which is usually the case for small responses over a long hop.
+
+```
+POST https://your-proxy.vercel.app/batch
+x-proxy-key: <key>
+content-type: application/json
+
+{ "requests": ["https://api.example.com/a", "https://api.example.com/b"] }
+```
+
+Entries can be bare URL strings, or objects with `url` and optional `method` and `headers`. At most 200 per batch, since every result carries its upstream body and a serverless response has a hard size ceiling.
+
+The response is always `200` when the batch itself was well formed. Each result stands alone:
+
+```json
+{
+  "proxy": "prxy-a",
+  "correlationId": "4b3a2c1d-…",
+  "results": [
+    { "index": 0, "status": 200, "headers": { "content-type": "application/json" }, "body": "{…}" },
+    {
+      "index": 1,
+      "issues": [
+        {
+          "issue": "batch.upstream.timeout",
+          "severity": "error",
+          "correlationId": "4b3a2c1d-…",
+          "dateTime": "2026-07-27T18:40:00.000Z",
+          "message": { "title": "Upstream timed out", "detail": "No response within 20000ms." }
+        }
+      ]
+    }
+  ]
+}
+```
+
+A result carries **either** `status` and `body`, or `issues`. The split is deliberate: an upstream answering `403` is a result, because the proxy did its job and that is the answer. `issues` means we never got that far — a rejected target, a timeout, a connection failure — so the caller can retry that one entry without replaying the batch.
+
+Batch-level failures (`401`, `400`, `413`) return the same `issues` shape at the top level with no `results`. Issue codes read `{domain}.{class}.{reason}`; parse them by prefix rather than exact match, since the set will grow.
+
+Send an `x-correlation-id` and it comes back on the response and on every issue, so your logs line up with the proxy's.
+
+Targets in a batch go through exactly the same checks as the single-target route — protocol, private-network guard, and the allowlist — so batching is not a way around any of them.
+
 ## Environment variables
 
 | Variable              | Required | Default         | What it does                                                                                                                           |
